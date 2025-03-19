@@ -53,9 +53,7 @@ export class PiPManager {
 
   private async captureFrame(): Promise<void> {
     const rect = this.options.element.getBoundingClientRect();
-    this.canvas.width = rect.width;
-    this.canvas.height = rect.height;
-
+    
     try {
       // Capture the element using html2canvas
       const capturedCanvas = await html2canvas(this.options.element, {
@@ -63,16 +61,38 @@ export class PiPManager {
         height: rect.height,
         useCORS: true,
         logging: false,
-        backgroundColor: null,
-        scale: window.devicePixelRatio,
+        backgroundColor: '#ffffff',
+        scale: 1,
+        imageTimeout: 2000,
+        allowTaint: true,
+        onclone: (clonedDoc) => {
+          const clonedElement = clonedDoc.querySelector(`[data-html2canvas-clone-id="${this.options.element.getAttribute('data-html2canvas-clone-id')}"]`);
+          if (clonedElement instanceof HTMLElement) {
+            // Preserve original styles
+            const computedStyle = window.getComputedStyle(this.options.element);
+            clonedElement.style.transform = computedStyle.transform;
+            clonedElement.style.transformOrigin = computedStyle.transformOrigin;
+            clonedElement.style.width = rect.width + 'px';
+            clonedElement.style.height = rect.height + 'px';
+          }
+        }
       });
 
-      // Draw the captured canvas onto our streaming canvas
-      this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      // Only update canvas size if needed
+      if (this.canvas.width !== rect.width || this.canvas.height !== rect.height) {
+        this.canvas.width = rect.width;
+        this.canvas.height = rect.height;
+      }
+
+      // Clear and draw in one operation to reduce flickering
+      this.ctx.globalCompositeOperation = 'copy';
       this.ctx.drawImage(capturedCanvas, 0, 0);
 
-      // Request next frame
-      this.animationFrameId = requestAnimationFrame(() => this.captureFrame());
+      // Request next frame with a slight delay to reduce CPU usage
+      setTimeout(() => {
+        this.animationFrameId = requestAnimationFrame(() => this.captureFrame());
+      }, 1000 / 30); // Cap at 30fps
+
     } catch (error) {
       console.error('Failed to capture frame:', error);
       this.cleanup();
